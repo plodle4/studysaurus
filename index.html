@@ -238,7 +238,7 @@
                 <h2>👥 // STUDY_CIRCLE_MULTIPLAYER</h2>
                 <div class="input-box-wrapper" style="padding: 12px; margin-bottom: 12px;">
                     <label>Connection Key</label>
-                    <input type="text" id="circle-peer-id-box" placeholder="Your ID shows up here..." readonly style="margin-bottom: 6px; color: var(--neon-blue);">
+                    <input type="text" id="circle-peer-id-box" placeholder="Click 'Open Lobby' to generate..." readonly style="margin-bottom: 6px; color: var(--neon-blue);">
                     <input type="text" id="circle-target-input" placeholder="Paste buddy's key here...">
                 </div>
                 <div style="display: flex; gap: 10px;">
@@ -248,7 +248,7 @@
                 <div class="circle-layout">
                     <div class="chat-area">
                         <div class="chat-log" id="circle-chat-log"><div style="color: #64748b;">[System Offline]</div></div>
-                        <input type="text" id="circle-chat-input" placeholder="Type a message..." disabled style="border-bottom: 2px solid var(--border-color); padding: 4px;">
+                        <input type="text" id="circle-chat-input" placeholder="Type a message & press Enter..." disabled style="border-bottom: 2px solid var(--border-color); padding: 4px; background:transparent; color:#fff; border-top:none; border-left:none; border-right:none;">
                     </div>
                     <div class="chat-area">
                         <table class="buddy-metrics-table">
@@ -309,7 +309,7 @@
         const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
         let localPeer = null; let peerConnection = null;
 
-        // NEW SYNTHESIZER SOUND ENGINE
+        // --- SYNTHESIZER SOUND ENGINE ---
         function playSound(type) {
             if (audioCtx.state === 'suspended') audioCtx.resume();
             const now = audioCtx.currentTime;
@@ -382,6 +382,7 @@
             "Stop scrolling. Social media feeds don't grant XP points. Only checkboxes do."
         ];
 
+        // --- DINO EVOLUTION SVG ENGINE ---
         const svgDefs = `
             <defs>
                 <linearGradient id="eggGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#a855f7"/><stop offset="100%" stop-color="#1e1b4b"/></linearGradient>
@@ -461,9 +462,99 @@
 
         function saveState() {
             localStorage.setItem('study_streak_state', JSON.stringify(state));
-            renderUI(); if (peerConnection && peerConnection.open) { broadcastCircleTelemetry(); }
+            renderUI(); 
+            broadcastCircleTelemetry(); // Syncs to buddy automatically!
         }
 
+        // --- MULTIPLAYER & CHAT LOGIC ---
+        function initializePeerJS() {
+            if (!localPeer) {
+                localPeer = new Peer();
+                localPeer.on('open', (id) => {
+                    document.getElementById('circle-peer-id-box').value = id;
+                    addAiMessage('LOBBY OPEN', `Your Key is generated! Send it to your buddy.`);
+                });
+                
+                localPeer.on('connection', (conn) => {
+                    peerConnection = conn;
+                    setupConnectionHandlers(peerConnection);
+                    addAiMessage('CIRCLE', 'A buddy has entered your lobby!');
+                });
+                
+                localPeer.on('error', (err) => {
+                    addAiMessage('ERROR', `Connection failed: ${err.type}`);
+                });
+            } else {
+                addAiMessage('LOBBY', 'Your lobby is already open!');
+            }
+        }
+
+        document.getElementById('btn-circle-host').addEventListener('click', initializePeerJS);
+
+        document.getElementById('btn-circle-join').addEventListener('click', () => {
+            const targetId = document.getElementById('circle-target-input').value.trim();
+            if (!targetId) {
+                addAiMessage('ERROR', 'Please paste your buddy\'s key first!');
+                return;
+            }
+            if (!localPeer) {
+                localPeer = new Peer();
+                localPeer.on('open', () => connectToBuddy(targetId));
+            } else {
+                connectToBuddy(targetId);
+            }
+        });
+
+        function connectToBuddy(targetId) {
+            peerConnection = localPeer.connect(targetId);
+            setupConnectionHandlers(peerConnection);
+            addAiMessage('CIRCLE', `Connecting to buddy...`);
+        }
+
+        function setupConnectionHandlers(conn) {
+            conn.on('open', () => {
+                document.getElementById('circle-chat-input').disabled = false;
+                appendChat('System', 'Secure connection established.', '#2ed573');
+                document.getElementById('row-remote-buddy').style.color = '#fff';
+                broadcastCircleTelemetry(); // Send initial state
+            });
+
+            conn.on('data', (data) => {
+                if (data.type === 'sync') {
+                    document.getElementById('row-remote-buddy').innerHTML = `<td>Buddy</td><td>🔥 ${data.streak}</td><td>${data.lvl}</td>`;
+                } else if (data.type === 'chat') {
+                    appendChat('Buddy', data.text, '#22d3ee');
+                    playSound('ding');
+                }
+            });
+        }
+
+        function broadcastCircleTelemetry() {
+            if (peerConnection && peerConnection.open) {
+                peerConnection.send({ type: 'sync', streak: state.streak, lvl: state.lvl });
+            }
+        }
+
+        const chatInput = document.getElementById('circle-chat-input');
+        chatInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter' && chatInput.value.trim() !== '') {
+                const msg = chatInput.value.trim();
+                appendChat('You', msg, '#a855f7');
+                if (peerConnection && peerConnection.open) {
+                    peerConnection.send({ type: 'chat', text: msg });
+                }
+                chatInput.value = '';
+            }
+        });
+
+        function appendChat(sender, text, color) {
+            const log = document.getElementById('circle-chat-log');
+            if (log.innerHTML.includes('[System Offline]')) log.innerHTML = '';
+            log.innerHTML += `<div style="margin-bottom:4px;"><strong style="color:${color}">${sender}:</strong> <span style="color:#e2e8f0">${text}</span></div>`;
+            log.scrollTop = log.scrollHeight;
+        }
+
+        // --- CORE LOGIC ---
         function checkStreakValidity() {
             const todayStr = new Date().toDateString(); const lastActiveStr = state.lastActiveDate ? new Date(state.lastActiveDate).toDateString() : '';
             if (todayStr !== lastActiveStr) state.streakCompletedToday = false;
@@ -488,7 +579,7 @@
                 if (isHatching) {
                     bannerText.innerText = "EGG CRACKED! MEET YOUR BRONTO!";
                     bot.classList.add('egg-cracking');
-                    playSound('crack'); // SYNTHESIZED CRACK AUDIO
+                    playSound('crack'); 
                     
                     setTimeout(() => {
                         bot.classList.remove('egg-cracking');
@@ -511,7 +602,6 @@
                 state.xp = state.xp - 100; 
                 state.lvl += 1; 
                 
-                // TITAN ROAR TRIGGER
                 if (state.lvl === 21) {
                     playSound('roar');
                     addAiMessage('TITAN AWAKENED', `Massive energy surge detected! Your Bronto has reached Month-End Titan scale!`);
@@ -690,15 +780,12 @@
             term.appendChild(div); term.scrollTop = term.scrollHeight; playSound('ding');
         }
 
-        document.getElementById('btn-add-goal').addEventListener('click', handleInputExtraction);
         document.getElementById('btn-reset-matrix').addEventListener('click', () => {
             if (confirm("🚨 Reset your Bronto back to an egg?")) {
                 state = { streak: 0, lastActiveDate: null, streakCompletedToday: false, xp: 0, lvl: 1, goals: [] };
                 resetGlobalPomoEngine(); saveState();
             }
         });
-        document.getElementById('btn-global-pomo-start').addEventListener('click', startGlobalPomoEngine);
-        document.getElementById('btn-global-pomo-reset').addEventListener('click', resetGlobalPomoEngine);
 
         window.onload = loadState;
     </script>
