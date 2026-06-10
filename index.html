@@ -270,7 +270,7 @@
                 <div class="timer-split-row">
                     <div class="timer-block-sub active-core" id="wrapper-focus-core">
                         <div class="timer-label-sub">⚔️ Focus</div>
-                        <div class="pomo-time-display" id="display-focus-time">00:00</div>
+                        <div class="pomo-time-display" id="display-focus-time">25:00</div>
                         <div class="inc-dec-group">
                             <button class="btn-inc" onclick="adjustCoreTime('focus', -10)">-10M</button>
                             <button class="btn-inc" onclick="adjustCoreTime('focus', 10)">+10M</button>
@@ -278,7 +278,7 @@
                     </div>
                     <div class="timer-block-sub" id="wrapper-break-core">
                         <div class="timer-label-sub">☕ Break</div>
-                        <div class="pomo-time-display break-color" id="display-break-time">00:00</div>
+                        <div class="pomo-time-display break-color" id="display-break-time">05:00</div>
                         <div class="inc-dec-group">
                             <button class="btn-inc" onclick="adjustCoreTime('break', -10)">-10M</button>
                             <button class="btn-inc" onclick="adjustCoreTime('break', 10)">+10M</button>
@@ -341,7 +341,14 @@
         }
 
         let state = { streak: 0, lastActiveDate: null, streakCompletedToday: false, xp: 0, lvl: 1, goals: [] };
-        let focusSecondsTotal = 0; let breakSecondsTotal = 0; let activeTimerMode = 'focus'; let clockSecondsRemaining = 0; let clockIntervalTracker = null; let clockIsRunning = false;
+        
+        // Timer Variables - Initialized to 25 and 5 minutes respectively
+        let focusSecondsTotal = 25 * 60; 
+        let breakSecondsTotal = 5 * 60; 
+        let activeTimerMode = 'focus'; 
+        let clockSecondsRemaining = focusSecondsTotal; 
+        let clockIntervalTracker = null; 
+        let clockIsRunning = false;
 
         const tacticalLameMotivationQuotes = [
             "Do it for the Bronto. He doesn't understand microbiology, but he believes in you.",
@@ -377,7 +384,6 @@
                 const saved = localStorage.getItem('study_streak_state');
                 if (saved) {
                     state = JSON.parse(saved);
-                    // Self-healing properties in case the old memory format is corrupted
                     if (!state.goals) state.goals = [];
                     if (!state.xp) state.xp = 0;
                     if (!state.lvl) state.lvl = 1;
@@ -586,36 +592,79 @@
         }
 
         function renderFormatString(s) { return `${Math.floor(s / 60).toString().padStart(2, '0')}:${(s % 60).toString().padStart(2, '0')}`; }
+        
         function refreshClockDisplays() {
-            if (!clockIsRunning) { document.getElementById('display-focus-time').innerText = renderFormatString(focusSecondsTotal); document.getElementById('display-break-time').innerText = renderFormatString(breakSecondsTotal); } 
-            else { if (activeTimerMode === 'focus') document.getElementById('display-focus-time').innerText = renderFormatString(clockSecondsRemaining); else document.getElementById('display-break-time').innerText = renderFormatString(clockSecondsRemaining); }
+            if (!clockIsRunning) { 
+                document.getElementById('display-focus-time').innerText = renderFormatString(focusSecondsTotal); 
+                document.getElementById('display-break-time').innerText = renderFormatString(breakSecondsTotal); 
+            } else { 
+                if (activeTimerMode === 'focus') document.getElementById('display-focus-time').innerText = renderFormatString(clockSecondsRemaining); 
+                else document.getElementById('display-break-time').innerText = renderFormatString(clockSecondsRemaining); 
+            }
         }
+        
+        // --- FIXED: Time Adjuster Logic ---
         function adjustCoreTime(mode, delta) {
-            if (clockIsRunning) return; playSound('ding');
-            if (mode === 'focus') focusSecondsTotal = Math.max(0, focusSecondsTotal + (delta * 60)); else breakSecondsTotal = Math.max(0, breakSecondsTotal + (delta * 60));
+            if (clockIsRunning) return; 
+            playSound('ding');
+            if (mode === 'focus') {
+                focusSecondsTotal = Math.max(0, focusSecondsTotal + (delta * 60));
+                if (activeTimerMode === 'focus') clockSecondsRemaining = focusSecondsTotal;
+            } else {
+                breakSecondsTotal = Math.max(0, breakSecondsTotal + (delta * 60));
+                if (activeTimerMode === 'break') clockSecondsRemaining = breakSecondsTotal;
+            }
             refreshClockDisplays();
         }
 
+        // --- FIXED: Linked Event Listeners to Pomo Buttons ---
+        document.getElementById('btn-global-pomo-start').addEventListener('click', startGlobalPomoEngine);
+        document.getElementById('btn-global-pomo-reset').addEventListener('click', resetGlobalPomoEngine);
+
         function startGlobalPomoEngine() {
-            if (clockIsRunning) { clearInterval(clockIntervalTracker); clockIsRunning = false; document.getElementById('btn-global-pomo-start').innerText = "START"; document.getElementById('btn-global-pomo-start').style.background = "#58cc02"; return; }
-            if (clockSecondsRemaining <= 0) { if (activeTimerMode === 'focus' && focusSecondsTotal > 0) clockSecondsRemaining = focusSecondsTotal; else if (activeTimerMode === 'break' && breakSecondsTotal > 0) clockSecondsRemaining = breakSecondsTotal; else return; }
-            clockIsRunning = true; document.getElementById('btn-global-pomo-start').innerText = "PAUSE"; document.getElementById('btn-global-pomo-start').style.background = "var(--neon-orange)";
+            if (clockIsRunning) { 
+                clearInterval(clockIntervalTracker); clockIsRunning = false; 
+                document.getElementById('btn-global-pomo-start').innerText = "START"; 
+                document.getElementById('btn-global-pomo-start').style.background = "#58cc02"; 
+                return; 
+            }
+            if (clockSecondsRemaining <= 0) { 
+                if (activeTimerMode === 'focus' && focusSecondsTotal > 0) clockSecondsRemaining = focusSecondsTotal; 
+                else if (activeTimerMode === 'break' && breakSecondsTotal > 0) clockSecondsRemaining = breakSecondsTotal; 
+                else return; 
+            }
+            clockIsRunning = true; 
+            document.getElementById('btn-global-pomo-start').innerText = "PAUSE"; 
+            document.getElementById('btn-global-pomo-start').style.background = "var(--neon-orange)";
+            
             clockIntervalTracker = setInterval(() => {
                 clockSecondsRemaining--; refreshClockDisplays();
                 if (clockSecondsRemaining <= 0) {
                     clearInterval(clockIntervalTracker); clockIsRunning = false; playSound('alarm'); triggerBotAnimation('jump');
-                    document.getElementById('btn-global-pomo-start').innerText = "START"; document.getElementById('btn-global-pomo-start').style.background = "#58cc02";
-                    if (activeTimerMode === 'focus') { activeTimerMode = 'break'; clockSecondsRemaining = breakSecondsTotal; document.getElementById('wrapper-focus-core').classList.remove('active-core'); document.getElementById('wrapper-break-core').classList.add('active-core'); } 
-                    else { activeTimerMode = 'focus'; clockSecondsRemaining = focusSecondsTotal; document.getElementById('wrapper-break-core').classList.remove('active-core'); document.getElementById('wrapper-focus-core').classList.add('active-core'); }
+                    document.getElementById('btn-global-pomo-start').innerText = "START"; 
+                    document.getElementById('btn-global-pomo-start').style.background = "#58cc02";
+                    
+                    if (activeTimerMode === 'focus') { 
+                        activeTimerMode = 'break'; clockSecondsRemaining = breakSecondsTotal; 
+                        document.getElementById('wrapper-focus-core').classList.remove('active-core'); 
+                        document.getElementById('wrapper-break-core').classList.add('active-core'); 
+                    } else { 
+                        activeTimerMode = 'focus'; clockSecondsRemaining = focusSecondsTotal; 
+                        document.getElementById('wrapper-break-core').classList.remove('active-core'); 
+                        document.getElementById('wrapper-focus-core').classList.add('active-core'); 
+                    }
                     refreshClockDisplays();
                 }
             }, 1000);
         }
 
         function resetGlobalPomoEngine() {
-            clearInterval(clockIntervalTracker); clockIsRunning = false; clockSecondsRemaining = 0; activeTimerMode = 'focus';
-            document.getElementById('btn-global-pomo-start').innerText = "START"; document.getElementById('btn-global-pomo-start').style.background = "#58cc02";
-            document.getElementById('wrapper-break-core').classList.remove('active-core'); document.getElementById('wrapper-focus-core').classList.add('active-core');
+            clearInterval(clockIntervalTracker); clockIsRunning = false; 
+            clockSecondsRemaining = activeTimerMode === 'focus' ? focusSecondsTotal : breakSecondsTotal;
+            document.getElementById('btn-global-pomo-start').innerText = "START"; 
+            document.getElementById('btn-global-pomo-start').style.background = "#58cc02";
+            document.getElementById('wrapper-break-core').classList.remove('active-core'); 
+            document.getElementById('wrapper-focus-core').classList.add('active-core');
             refreshClockDisplays();
         }
 
